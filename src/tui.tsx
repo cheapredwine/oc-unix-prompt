@@ -1,0 +1,102 @@
+import { Plugin } from "@opencode/plugin/tui"
+import { usePlugin } from "@opencode/plugin/tui"
+import { createEffect, createMemo, createSignal, onCleanup } from "solid-js"
+import { execFile } from "node:child_process"
+
+type GitState = {
+  branch: string
+  dirty: boolean
+}
+
+function probeGit(directory: string): Promise<GitState | undefined> {
+  return new Promise((resolve) => {
+    execFile(
+      "git",
+      ["-C", directory, "status", "--porcelain", "-b"],
+      { timeout: 2000 },
+      (err, stdout) => {
+        if (err || typeof stdout !== "string") return resolve(undefined)
+        const lines = stdout.split("\n").filter((l) => l.length > 0)
+        const head = lines[0] ?? ""
+        const match = /## (?:(?:no branch)|(?:HEAD \(no branch\)))|## ([^.\s]+)/.exec(head)
+        const branch = match?.[1]
+        if (!branch) return resolve(undefined)
+        resolve({ branch, dirty: lines.length > 1 })
+      },
+    )
+  })
+}
+
+function formatClock(d: Date): string {
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${days[d.getDay()]} ${months[d.getMonth()]} ${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+const GIT_POLL_MS = 30_000
+const CLOCK_TICK_MS = 60_000
+
+function UnixPrompt() {
+  const context = usePlugin()
+
+  const directory = createMemo(() => context.location?.directory)
+
+  const [git, setGit] = createSignal<GitState | undefined>(undefined)
+  const [now, setNow] = createSignal(new Date())
+
+  // Clock: minute precision, lightweight tick.
+  const clockTimer = setInterval(() => setNow(new Date()), CLOCK_TICK_MS)
+  onCleanup(() => clearInterval(clockTimer))
+
+  // Git: re-probe on directory change, then every 30s.
+  createEffect(() => {
+    const dir = directory()
+    if (!dir) {
+      setGit(undefined)
+      return
+    }
+    let alive = true
+    const refresh = () => {
+      probeGit(dir).then((state) => {
+        if (alive) setGit(state)
+      })
+    }
+    refresh()
+    const timer = setInterval(refresh, GIT_POLL_MS)
+    onCleanup(() => {
+      alive = false
+      clearInterval(timer)
+    })
+  })
+
+  const path = createMemo(() => {
+    const dir = directory()
+    return dir ? context.ui.format.path(dir) : undefined
+  })
+
+  return (
+    <text>
+      <text fg={context.theme.text.faint}>┌ [{formatClock(now())}] </text>
+      {path() && <text fg={context.theme.text.muted}>{path()}</text>}
+      {git() && (
+        <text fg={context.theme.text.muted}>
+          {" ── "}
+          {git()!.branch}
+          {git()!.dirty ? "✚" : ""}
+        </text>
+      )}
+    </text>
+  )
+}
+
+export default Plugin.define({
+  id: "jsherron.unix-prompt",
+  setup(context) {
+    const unregister = context.ui.slot({
+      append: "session.composer.top",
+      render: () => <UnixPrompt />,
+    })
+    return () => unregister()
+  },
+})
