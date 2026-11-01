@@ -8,10 +8,11 @@
     "node": ">=24"
   },
   "exports": {
+    ".": "./dist/index.js",
     "./tui": "./dist/tui.js"
   },
   "scripts": {
-    "build": "esbuild src/tui.tsx --bundle --outfile=dist/tui.js --format=esm --jsx=automatic --jsx-import-source=@opentui/solid --platform=node --external:@opencode/plugin --external:@opentui/core --external:@opentui/solid --external:solid-js",
+    "build": "esbuild src/index.ts --bundle --outfile=dist/index.js --format=esm --platform=node --external:@opencode/plugin && esbuild src/tui.tsx --bundle --outfile=dist/tui.js --format=esm --jsx=automatic --jsx-import-source=@opentui/solid --platform=node --external:@opencode/plugin --external:@opentui/core --external:@opentui/solid --external:solid-js",
     "typecheck": "tsc --noEmit",
     "verify": "pnpm build && pnpm typecheck"
   },

@@ -3,6 +3,16 @@ import { Plugin } from "@opencode/plugin/tui";
 import { usePlugin } from "@opencode/plugin/tui";
 import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { execFile } from "node:child_process";
+
+// src/clock.ts
+function formatClock(d) {
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${days[d.getDay()]} ${months[d.getMonth()]} ${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// src/tui.tsx
 import { jsx } from "@opentui/solid/jsx-runtime";
 function probeGit(directory) {
   return new Promise((resolve) => {
@@ -21,12 +31,6 @@ function probeGit(directory) {
       }
     );
   });
-}
-function formatClock(d) {
-  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${days[d.getDay()]} ${months[d.getMonth()]} ${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 var GIT_POLL_MS = 3e4;
 var CLOCK_TICK_MS = 6e4;

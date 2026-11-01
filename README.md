@@ -4,27 +4,30 @@
 > NO WARRANTIES, EXPRESS OR IMPLIED. Effectively untested personal plugin — read the
 > source before you install. You assume all risk. See [DISCLAIMER.md](./DISCLAIMER.md).
 
-An [OpenCode](https://opencode.ai) V2 TUI plugin that renders a UNIX-style prompt line above the composer:
+An [OpenCode](https://opencode.ai) V2 plugin with two parts:
 
-```
-┌ [Sat Oct 31 14:22] ~/src ── main✚
-```
+- **TUI part** — renders a UNIX-style prompt line above the composer:
+  ```
+  ┌ [Sat Oct 31 14:22] ~/src ── main✚
+  ```
+  date/time (60s refresh), abbreviated working directory (reactive), git branch + dirty marker (`git status` probe, 30s refresh), blank outside a repo.
+- **Server part** — stamps every admitted user prompt with a `┌ [Sat Oct 31 14:22]` line at submission time, so the stamp carries into the transcript scrollback permanently. Side effect: the model also sees the submission time (same time-awareness trick as community plugins like `my-opencode-toolkit`, but display-first).
 
 - **Date/time** — day-of-week, month, day, HH:MM; refreshed every 60 seconds
 - **Working directory** — abbreviated with `~`, reactive to location changes
-- **Git branch + dirty marker** — branch name, `✚` when the worktree has uncommitted changes; probed with `git status --porcelain` every 30 seconds; blank segment outside a git repo
-
 Deliberately minimal: the OpenCode TUI already shows model, context usage, and session cost elsewhere. No hardcoded colors — everything uses the active theme's tokens.
 
 ## Install
 
-Point `cli.json` (TUI-only settings, **not** `opencode.json`) at the package:
+Point `opencode.json` (or a project `.opencode/opencode.jsonc`) at the package:
 
 ```json
 {
   "plugins": ["/path/to/oc-unix-prompt"]
 }
 ```
+
+The server part loads from this entry; the TUI part loads beside it automatically (its `./tui` export). Do **not** also list it in `cli.json` — that would render the composer slot twice.
 
 Or install from a git clone and reference the local path. Config hot-reloads; no TUI restart needed.
 

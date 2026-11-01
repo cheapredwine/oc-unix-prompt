@@ -2,6 +2,7 @@ import { Plugin } from "@opencode/plugin/tui"
 import { usePlugin } from "@opencode/plugin/tui"
 import { createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { execFile } from "node:child_process"
+import { formatClock } from "./clock"
 
 type GitState = {
   branch: string
@@ -27,12 +28,7 @@ function probeGit(directory: string): Promise<GitState | undefined> {
   })
 }
 
-function formatClock(d: Date): string {
-  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${days[d.getDay()]} ${months[d.getMonth()]} ${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
+// clock formatting lives in ./clock.ts (shared with the server part)
 
 const GIT_POLL_MS = 30_000
 const CLOCK_TICK_MS = 60_000
