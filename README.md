@@ -8,9 +8,9 @@ An [OpenCode](https://opencode.ai) V2 plugin with two parts:
 
 - **TUI part** — renders a UNIX-style prompt line above the composer:
   ```
-  ┌ [Sat Oct 31 14:22] ~/src ── main✚
+  ┌ [Sat Oct 31 14:22] ~/src ── main✚ ⋯ fix the flaky cache test
   ```
-  date/time (60s refresh), abbreviated working directory (reactive), git branch + dirty marker (`git status` probe, 30s refresh), blank outside a repo. Per-segment colors via `<span style={{ fg }}>` children (time faint, cwd base, branch muted — theme tokens only).
+  date/time (60s refresh), abbreviated working directory (reactive), git branch + dirty marker (`git status` probe, 30s refresh), blank outside a repo. While the model is running, a `⋯ <summary>` segment shows the first line of the latest user prompt (truncated to 48 chars) — a zero-cost reactive read of the client's session store, gone when the run finishes. Per-segment colors via `<span style={{ fg }}>` children (time faint, cwd base, branch muted — theme tokens only).
 - **Server part** — stamps every admitted user prompt with a `┌ [Sat Oct 31 14:22]` line at submission time, so the stamp carries into the transcript scrollback permanently. A `context`/`compaction`/`generate`/`title` hook strips the stamp from every outgoing model request, so the stamp costs **zero tokens**: persisted history keeps it, the wire never sees it.
 
 - **Date/time** — day-of-week, month, day, HH:MM; refreshed every 60 seconds

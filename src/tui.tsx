@@ -42,7 +42,29 @@ function StyledSpan(props: { fg?: RGBA; children?: JSX.Element }) {
   return <span style={{ fg: props.fg }}>{props.children}</span>
 }
 
-function UnixPrompt() {
+/** Summary of the current work shown while the model is running: the first
+ * displayable line of the latest user prompt. Blank lines and the admission
+ * stamp (`┌ [...]`) are skipped; the line is truncated to one display width. */
+const WORK_MAX_CHARS = 48
+
+/** Structural subset of the client's SessionMessageInfo — `@opencode/client`
+ * is a transitive dependency and not importable from this project. */
+type UserMessage = { type: "user"; text: string }
+
+function currentWork(messages: ReadonlyArray<unknown>): string | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i] as Partial<UserMessage> | undefined
+    if (message?.type !== "user" || typeof message.text !== "string") continue
+    for (const rawLine of message.text.split("\n")) {
+      const line = rawLine.trim()
+      if (line.length === 0 || line.startsWith("┌ [")) continue
+      return line.length > WORK_MAX_CHARS ? `${line.slice(0, WORK_MAX_CHARS)}…` : line
+    }
+  }
+  return undefined
+}
+
+function UnixPrompt(props: { sessionID: string }) {
   const context = usePlugin()
 
   const directory = createMemo(() => context.location?.directory)
@@ -80,6 +102,14 @@ function UnixPrompt() {
     return dir ? context.ui.format.path(dir) : undefined
   })
 
+  // Current-work summary: shown only while the model is running, from the
+  // latest user prompt. `data.session.status`/`message.list` are reactive
+  // reads over the host's event-driven client store — no polling needed.
+  const running = createMemo(() => context.data.session.status(props.sessionID) === "running")
+  const work = createMemo(() =>
+    running() ? currentWork(context.data.session.message.list(props.sessionID) ?? []) : undefined,
+  )
+
   // Per-segment colors via <span> children (theme tokens only):
   // time faint, cwd base, separator faint, branch muted, dirty marker muted.
   // NOTE: <text content={StyledText}> is NOT supported by the @opentui/solid
@@ -98,6 +128,12 @@ function UnixPrompt() {
           <StyledSpan fg={context.theme.text.muted}>{git()!.branch}{git()!.dirty ? "✚" : ""}</StyledSpan>
         </>
       )}
+      {work() && (
+        <>
+          <StyledSpan fg={context.theme.text.faint}> ⋯ </StyledSpan>
+          <StyledSpan fg={context.theme.text.muted}>{work()}</StyledSpan>
+        </>
+      )}
     </text>
   )
 }
@@ -107,7 +143,7 @@ export default Plugin.define({
   setup(context) {
     const unregister = context.ui.slot({
       append: "session.composer.top",
-      render: () => <UnixPrompt />,
+      render: (input) => <UnixPrompt sessionID={input.sessionID} />,
     })
     return () => unregister()
   },

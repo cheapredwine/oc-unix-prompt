@@ -37,7 +37,20 @@ var CLOCK_TICK_MS = 6e4;
 function StyledSpan(props) {
   return /* @__PURE__ */ jsx("span", { style: { fg: props.fg }, children: props.children });
 }
-function UnixPrompt() {
+var WORK_MAX_CHARS = 48;
+function currentWork(messages) {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (message?.type !== "user" || typeof message.text !== "string") continue;
+    for (const rawLine of message.text.split("\n")) {
+      const line = rawLine.trim();
+      if (line.length === 0 || line.startsWith("\u250C [")) continue;
+      return line.length > WORK_MAX_CHARS ? `${line.slice(0, WORK_MAX_CHARS)}\u2026` : line;
+    }
+  }
+  return void 0;
+}
+function UnixPrompt(props) {
   const context = usePlugin();
   const directory = createMemo(() => context.location?.directory);
   const [git, setGit] = createSignal(void 0);
@@ -67,6 +80,10 @@ function UnixPrompt() {
     const dir = directory();
     return dir ? context.ui.format.path(dir) : void 0;
   });
+  const running = createMemo(() => context.data.session.status(props.sessionID) === "running");
+  const work = createMemo(
+    () => running() ? currentWork(context.data.session.message.list(props.sessionID) ?? []) : void 0
+  );
   return /* @__PURE__ */ jsxs("text", { children: [
     /* @__PURE__ */ jsxs(StyledSpan, { fg: context.theme.text.faint, children: [
       "\u250C [",
@@ -83,6 +100,10 @@ function UnixPrompt() {
         git().branch,
         git().dirty ? "\u271A" : ""
       ] })
+    ] }),
+    work() && /* @__PURE__ */ jsxs(Fragment, { children: [
+      /* @__PURE__ */ jsx(StyledSpan, { fg: context.theme.text.faint, children: " \u22EF " }),
+      /* @__PURE__ */ jsx(StyledSpan, { fg: context.theme.text.muted, children: work() })
     ] })
   ] });
 }
@@ -91,7 +112,7 @@ var tui_default = Plugin.define({
   setup(context) {
     const unregister = context.ui.slot({
       append: "session.composer.top",
-      render: () => /* @__PURE__ */ jsx(UnixPrompt, {})
+      render: (input) => /* @__PURE__ */ jsx(UnixPrompt, { sessionID: input.sessionID })
     });
     return () => unregister();
   }
