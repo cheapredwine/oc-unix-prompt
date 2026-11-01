@@ -10,6 +10,21 @@ function formatClock(d) {
 }
 
 // src/index.ts
+var STAMP_RE = /^┌ \[[A-Za-z]{3} [A-Za-z]{3} \d{1,2} \d{2}:\d{2}\]\n/;
+function stripStamps(messages) {
+  for (const raw of messages) {
+    const message = raw;
+    if (message.role !== "user" || !Array.isArray(message.content)) continue;
+    for (const rawPart of message.content) {
+      if (typeof rawPart === "object" && rawPart !== null && rawPart.type === "text") {
+        const part = rawPart;
+        if (STAMP_RE.test(part.text)) {
+          part.text = part.text.replace(STAMP_RE, "");
+        }
+      }
+    }
+  }
+}
 var index_default = Plugin.define({
   id: "jsherron.unix-prompt",
   async setup(ctx) {
@@ -20,6 +35,10 @@ var index_default = Plugin.define({
 ${text}`;
       }
     });
+    await ctx.session.hook("context", (event) => stripStamps(event.messages));
+    await ctx.session.hook("compaction", (event) => stripStamps(event.messages));
+    await ctx.session.hook("generate", (event) => stripStamps(event.messages));
+    await ctx.session.hook("title", (event) => stripStamps(event.messages));
   }
 });
 export {

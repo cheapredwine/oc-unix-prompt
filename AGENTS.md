@@ -11,7 +11,7 @@ OpenCode V2 TUI plugin. Renders a UNIX-style prompt line (`┌ [date time] ~/pat
 - Colors exclusively from `context.theme` tokens (`text.faint`, `text.muted`) — never hardcode hex.
 - Slots do not render in non-interactive `opencode run` mode.
 - Scope discipline: model/context/cost are already shown by the TUI — do not duplicate them here.
-- The prompt stamp edits the canonical persisted user input: the model sees the timestamp too. Guard against double-stamping by checking for the `┌ [` prefix (retry-safety + commands that submit through `session.prompt`).
+- The prompt stamp edits the canonical persisted user input (transcript keeps it); a matching `stripStamps` on the `context`/`compaction`/`generate`/`title` hooks removes the stamp line from outgoing model requests (zero token cost — request edits never write history). Guard against double-stamping by checking for the `┌ [` prefix (retry-safety + commands that submit through `session.prompt`). If the stamp format changes, keep `STAMP_RE` in sync — it must match `formatClock` output exactly.
 
 ## Conventions
 

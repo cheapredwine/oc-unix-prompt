@@ -11,7 +11,7 @@ An [OpenCode](https://opencode.ai) V2 plugin with two parts:
   ┌ [Sat Oct 31 14:22] ~/src ── main✚
   ```
   date/time (60s refresh), abbreviated working directory (reactive), git branch + dirty marker (`git status` probe, 30s refresh), blank outside a repo.
-- **Server part** — stamps every admitted user prompt with a `┌ [Sat Oct 31 14:22]` line at submission time, so the stamp carries into the transcript scrollback permanently. Side effect: the model also sees the submission time (same time-awareness trick as community plugins like `my-opencode-toolkit`, but display-first).
+- **Server part** — stamps every admitted user prompt with a `┌ [Sat Oct 31 14:22]` line at submission time, so the stamp carries into the transcript scrollback permanently. A `context`/`compaction`/`generate`/`title` hook strips the stamp from every outgoing model request, so the stamp costs **zero tokens**: persisted history keeps it, the wire never sees it.
 
 - **Date/time** — day-of-week, month, day, HH:MM; refreshed every 60 seconds
 - **Working directory** — abbreviated with `~`, reactive to location changes
@@ -49,6 +49,7 @@ Remove the path from `cli.json` — the plugin unloads on live config reload and
 ## Roadmap (not implemented)
 
 - Distinguish agent-made vs. pre-existing dirty state (red vs. dim `✚`) using the session's diff data
+- Restore model time-awareness (currently stripped alongside the stamp, per token-cost preference)
 - Warning marker when the configured model diverges from the actually-loaded model
 - Optional `/unix-prompt` toggle, pending-permission count, subagent badge
 
