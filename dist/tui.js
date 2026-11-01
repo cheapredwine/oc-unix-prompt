@@ -3,7 +3,6 @@ import { Plugin } from "@opencode/plugin/tui";
 import { usePlugin } from "@opencode/plugin/tui";
 import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { execFile } from "node:child_process";
-import { StyledText, fg } from "@opentui/core";
 
 // src/clock.ts
 function formatClock(d) {
@@ -14,7 +13,7 @@ function formatClock(d) {
 }
 
 // src/tui.tsx
-import { jsx } from "@opentui/solid/jsx-runtime";
+import { Fragment, jsx, jsxs } from "@opentui/solid/jsx-runtime";
 function probeGit(directory) {
   return new Promise((resolve) => {
     execFile(
@@ -35,6 +34,9 @@ function probeGit(directory) {
 }
 var GIT_POLL_MS = 3e4;
 var CLOCK_TICK_MS = 6e4;
+function StyledSpan(props) {
+  return /* @__PURE__ */ jsx("span", { style: { fg: props.fg }, children: props.children });
+}
 function UnixPrompt() {
   const context = usePlugin();
   const directory = createMemo(() => context.location?.directory);
@@ -65,18 +67,24 @@ function UnixPrompt() {
     const dir = directory();
     return dir ? context.ui.format.path(dir) : void 0;
   });
-  const styled = new StyledText([fg(context.theme.text.faint)(`\u250C [${formatClock(now())}]`)]);
-  if (path()) {
-    styled.chunks.push(fg(context.theme.text.base)(` ${path()}`));
-  }
-  const gitState = git();
-  if (gitState) {
-    styled.chunks.push(
-      fg(context.theme.text.faint)(" \u2500\u2500 "),
-      fg(context.theme.text.muted)(`${gitState.branch}${gitState.dirty ? "\u271A" : ""}`)
-    );
-  }
-  return /* @__PURE__ */ jsx("text", { content: styled });
+  return /* @__PURE__ */ jsxs("text", { children: [
+    /* @__PURE__ */ jsxs(StyledSpan, { fg: context.theme.text.faint, children: [
+      "\u250C [",
+      formatClock(now()),
+      "]"
+    ] }),
+    path() && /* @__PURE__ */ jsxs(StyledSpan, { fg: context.theme.text.base, children: [
+      " ",
+      path()
+    ] }),
+    git() && /* @__PURE__ */ jsxs(Fragment, { children: [
+      /* @__PURE__ */ jsx(StyledSpan, { fg: context.theme.text.faint, children: " \u2500\u2500 " }),
+      /* @__PURE__ */ jsxs(StyledSpan, { fg: context.theme.text.muted, children: [
+        git().branch,
+        git().dirty ? "\u271A" : ""
+      ] })
+    ] })
+  ] });
 }
 var tui_default = Plugin.define({
   id: "jsherron.unix-prompt",

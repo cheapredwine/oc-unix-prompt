@@ -2,7 +2,8 @@ import { Plugin } from "@opencode/plugin/tui"
 import { usePlugin } from "@opencode/plugin/tui"
 import { createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { execFile } from "node:child_process"
-import { StyledText, fg } from "@opentui/core"
+import type { RGBA } from "@opentui/core"
+import type { JSX } from "@opentui/solid"
 import { formatClock } from "./clock"
 
 type GitState = {
@@ -33,6 +34,13 @@ function probeGit(directory: string): Promise<GitState | undefined> {
 
 const GIT_POLL_MS = 30_000
 const CLOCK_TICK_MS = 60_000
+
+/** Intrinsic <span> with a themed `fg` (RGBA token). The reconciler's
+ * setProperty only honors `href` and `style` on text nodes — bare `fg` props
+ * are silently dropped — so pass the color through `style`. */
+function StyledSpan(props: { fg?: RGBA; children?: JSX.Element }) {
+  return <span style={{ fg: props.fg }}>{props.children}</span>
+}
 
 function UnixPrompt() {
   const context = usePlugin()
@@ -72,20 +80,26 @@ function UnixPrompt() {
     return dir ? context.ui.format.path(dir) : undefined
   })
 
-  // Per-segment colors via StyledText chunks (theme tokens only):
+  // Per-segment colors via <span> children (theme tokens only):
   // time faint, cwd base, separator faint, branch muted, dirty marker muted.
-  const styled = new StyledText([fg(context.theme.text.faint)(`┌ [${formatClock(now())}]`)])
-  if (path()) {
-    styled.chunks.push(fg(context.theme.text.base)(` ${path()}`))
-  }
-  const gitState = git()
-  if (gitState) {
-    styled.chunks.push(
-      fg(context.theme.text.faint)(" ── "),
-      fg(context.theme.text.muted)(`${gitState.branch}${gitState.dirty ? "✚" : ""}`),
-    )
-  }
-  return <text content={styled} />
+  // NOTE: <text content={StyledText}> is NOT supported by the @opentui/solid
+  // reconciler — it stringifies non-string content props to "[object Object]".
+  // Colors must go through `style` on <span> children — bare `fg` props are
+  // silently dropped (setProperty only honors href/style on text nodes).
+  // The git signal must be read inside the JSX (Solid tracks only JSX
+  // expressions; component-body reads never re-run).
+  return (
+    <text>
+      <StyledSpan fg={context.theme.text.faint}>┌ [{formatClock(now())}]</StyledSpan>
+      {path() && <StyledSpan fg={context.theme.text.base}> {path()}</StyledSpan>}
+      {git() && (
+        <>
+          <StyledSpan fg={context.theme.text.faint}> ── </StyledSpan>
+          <StyledSpan fg={context.theme.text.muted}>{git()!.branch}{git()!.dirty ? "✚" : ""}</StyledSpan>
+        </>
+      )}
+    </text>
+  )
 }
 
 export default Plugin.define({
