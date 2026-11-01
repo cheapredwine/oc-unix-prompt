@@ -3,6 +3,7 @@ import { Plugin } from "@opencode/plugin/tui";
 import { usePlugin } from "@opencode/plugin/tui";
 import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { execFile } from "node:child_process";
+import { StyledText, fg } from "@opentui/core";
 
 // src/clock.ts
 function formatClock(d) {
@@ -64,12 +65,18 @@ function UnixPrompt() {
     const dir = directory();
     return dir ? context.ui.format.path(dir) : void 0;
   });
-  const segments = [
-    `\u250C [${formatClock(now())}]`,
-    path(),
-    git() ? `\u2500\u2500 ${git().branch}${git().dirty ? "\u271A" : ""}` : void 0
-  ].filter((s) => typeof s === "string" && s.length > 0);
-  return /* @__PURE__ */ jsx("text", { fg: context.theme.text.faint, children: segments.join(" ") });
+  const styled = new StyledText([fg(context.theme.text.faint)(`\u250C [${formatClock(now())}]`)]);
+  if (path()) {
+    styled.chunks.push(fg(context.theme.text.base)(` ${path()}`));
+  }
+  const gitState = git();
+  if (gitState) {
+    styled.chunks.push(
+      fg(context.theme.text.faint)(" \u2500\u2500 "),
+      fg(context.theme.text.muted)(`${gitState.branch}${gitState.dirty ? "\u271A" : ""}`)
+    );
+  }
+  return /* @__PURE__ */ jsx("text", { content: styled });
 }
 var tui_default = Plugin.define({
   id: "jsherron.unix-prompt",

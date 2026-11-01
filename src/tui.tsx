@@ -2,6 +2,7 @@ import { Plugin } from "@opencode/plugin/tui"
 import { usePlugin } from "@opencode/plugin/tui"
 import { createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { execFile } from "node:child_process"
+import { StyledText, fg } from "@opentui/core"
 import { formatClock } from "./clock"
 
 type GitState = {
@@ -71,13 +72,20 @@ function UnixPrompt() {
     return dir ? context.ui.format.path(dir) : undefined
   })
 
-  const segments = [
-    `┌ [${formatClock(now())}]`,
-    path(),
-    git() ? `── ${git()!.branch}${git()!.dirty ? "✚" : ""}` : undefined,
-  ].filter((s): s is string => typeof s === "string" && s.length > 0)
-
-  return <text fg={context.theme.text.faint}>{segments.join(" ")}</text>
+  // Per-segment colors via StyledText chunks (theme tokens only):
+  // time faint, cwd base, separator faint, branch muted, dirty marker muted.
+  const styled = new StyledText([fg(context.theme.text.faint)(`┌ [${formatClock(now())}]`)])
+  if (path()) {
+    styled.chunks.push(fg(context.theme.text.base)(` ${path()}`))
+  }
+  const gitState = git()
+  if (gitState) {
+    styled.chunks.push(
+      fg(context.theme.text.faint)(" ── "),
+      fg(context.theme.text.muted)(`${gitState.branch}${gitState.dirty ? "✚" : ""}`),
+    )
+  }
+  return <text content={styled} />
 }
 
 export default Plugin.define({
