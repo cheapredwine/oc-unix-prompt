@@ -3,7 +3,7 @@ import { Plugin } from "@opencode/plugin/tui";
 import { usePlugin } from "@opencode/plugin/tui";
 import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { execFile } from "node:child_process";
-import { jsx, jsxs } from "@opentui/solid/jsx-runtime";
+import { jsx } from "@opentui/solid/jsx-runtime";
 function probeGit(directory) {
   return new Promise((resolve) => {
     execFile(
@@ -60,19 +60,12 @@ function UnixPrompt() {
     const dir = directory();
     return dir ? context.ui.format.path(dir) : void 0;
   });
-  return /* @__PURE__ */ jsxs("text", { children: [
-    /* @__PURE__ */ jsxs("text", { fg: context.theme.text.faint, children: [
-      "\u250C [",
-      formatClock(now()),
-      "] "
-    ] }),
-    path() && /* @__PURE__ */ jsx("text", { fg: context.theme.text.muted, children: path() }),
-    git() && /* @__PURE__ */ jsxs("text", { fg: context.theme.text.muted, children: [
-      " \u2500\u2500 ",
-      git().branch,
-      git().dirty ? "\u271A" : ""
-    ] })
-  ] });
+  const segments = [
+    `\u250C [${formatClock(now())}]`,
+    path(),
+    git() ? `\u2500\u2500 ${git().branch}${git().dirty ? "\u271A" : ""}` : void 0
+  ].filter((s) => typeof s === "string" && s.length > 0);
+  return /* @__PURE__ */ jsx("text", { fg: context.theme.text.faint, children: segments.join(" ") });
 }
 var tui_default = Plugin.define({
   id: "jsherron.unix-prompt",

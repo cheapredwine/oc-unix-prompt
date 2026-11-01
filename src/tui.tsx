@@ -75,19 +75,13 @@ function UnixPrompt() {
     return dir ? context.ui.format.path(dir) : undefined
   })
 
-  return (
-    <text>
-      <text fg={context.theme.text.faint}>┌ [{formatClock(now())}] </text>
-      {path() && <text fg={context.theme.text.muted}>{path()}</text>}
-      {git() && (
-        <text fg={context.theme.text.muted}>
-          {" ── "}
-          {git()!.branch}
-          {git()!.dirty ? "✚" : ""}
-        </text>
-      )}
-    </text>
-  )
+  const segments = [
+    `┌ [${formatClock(now())}]`,
+    path(),
+    git() ? `── ${git()!.branch}${git()!.dirty ? "✚" : ""}` : undefined,
+  ].filter((s): s is string => typeof s === "string" && s.length > 0)
+
+  return <text fg={context.theme.text.faint}>{segments.join(" ")}</text>
 }
 
 export default Plugin.define({
