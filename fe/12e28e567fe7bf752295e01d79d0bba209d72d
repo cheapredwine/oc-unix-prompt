@@ -1,0 +1,28 @@
+README.md
+  s_475ee625df74b0::t_8ea8683f8b427a 18
+  s_475ee625df74b0::t_0442774066a2e8 13-15
+AGENTS.md
+  s_475ee625df74b0::t_9e53190fc1e9fb 17,19-23,25,27-54,56-60
+src/tui.tsx
+  s_475ee625df74b0::t_0cae0a8499bacb 5-6,37-45,103-105,111-150
+PENDING-REVIEW.md
+  s_475ee625df74b0::t_6161cb92e1cc5a 1-20
+dist/tui.js
+  s_475ee625df74b0::t_945158e3b9cb8a 6,17,37,68,71,82-113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "fe12e28e567fe7bf752295e01d79d0bba209d72d",
+  "prompts": {},
+  "sessions": {
+    "s_475ee625df74b0": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e0d6f63f2ffeFF9WqtgP5qP8sL",
+        "model": "@cf/zai-org/glm-5.3-flash"
+      },
+      "human_author": "Jason Sherron <jsherron@cloudflare.com>"
+    }
+  }
+}
