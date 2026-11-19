@@ -10,11 +10,13 @@ An [OpenCode](https://opencode.ai) V2 plugin with two parts:
   ```
   ┌ [Sat Oct 31 14:22] ~/src ── main✚ ⋯ fix the flaky cache test
   ```
-  date/time (60s refresh), abbreviated working directory (reactive), git branch + dirty marker (`git status` probe, 30s refresh), blank outside a repo. While the model is running, a `⋯ <summary>` segment shows the first line of the latest user prompt (truncated to 48 chars) — a zero-cost reactive read of the client's session store, gone when the run finishes. Per-segment colors via `<span style={{ fg }}>` children (time faint, cwd base, branch muted — theme tokens only).
+  date/time (minute precision), abbreviated working directory, git branch + dirty marker (`git status` probe, 30s refresh), blank outside a repo. While the model is running, a `⋯ <summary>` segment shows the first line of the latest user prompt (truncated to 48 chars) — read from the client's session store. The whole line is rebuilt once per second and repainted only when its text changed. Per-segment colors via styled-text chunks built from theme tokens (time faint, cwd base, branch muted). Working-directory changes surface through the per-tick rebuild.
+
+  Why imperative updates instead of JSX signals: under esbuild `--jsx=automatic`, the `@opentui/solid` jsx-runtime receives dynamic children as strings that were already evaluated at mount, so signal-driven JSX text is frozen after the first paint (diagnosed 2026-11-19; see AGENTS.md). The renderable's `content` setter is the sanctioned update path — it sets the native text, refreshes the lifecycle pass, and requests a frame on the renderer's on-demand loop.
 - **Server part** — stamps every admitted user prompt with a `┌ [Sat Oct 31 14:22]` line at submission time, so the stamp carries into the transcript scrollback permanently. A `context`/`compaction`/`generate`/`title` hook strips the stamp from every outgoing model request, so the stamp costs **zero tokens**: persisted history keeps it, the wire never sees it.
 
-- **Date/time** — day-of-week, month, day, HH:MM; refreshed every 60 seconds
-- **Working directory** — abbreviated with `~`, reactive to location changes
+- **Date/time** — day-of-week, month, day, HH:MM; repaints on the minute (per-tick rebuild with change guard)
+- **Working directory** — abbreviated with `~`, follows location changes via the per-tick rebuild
 Deliberately minimal: the OpenCode TUI already shows model, context usage, and session cost elsewhere. No hardcoded colors — everything uses the active theme's tokens.
 
 ## Install
