@@ -35,7 +35,7 @@ function probeGit(directory: string): Promise<GitState | undefined> {
 const GIT_POLL_MS = 30_000
 
 /** Why the prompt line updates imperatively (investigated 2026-11-19, see
- * AGENTS.md "Known limitation" section): under esbuild `--jsx=automatic` the
+ * AGENTS.md "Idle-render mystery" section): under esbuild `--jsx=automatic` the
  * @opentui/solid jsx-runtime receives dynamic JSX children as strings that
  * were already evaluated at mount, so signal-driven JSX text never changes
  * after the first paint. The reliable update path is the renderable's own
