@@ -3,6 +3,7 @@ import { Plugin } from "@opencode/plugin/tui";
 import { usePlugin } from "@opencode/plugin/tui";
 import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { execFile } from "node:child_process";
+import { fg, StyledText } from "@opentui/core";
 
 // src/clock.ts
 function formatClock(d) {
@@ -13,7 +14,7 @@ function formatClock(d) {
 }
 
 // src/tui.tsx
-import { Fragment, jsx, jsxs } from "@opentui/solid/jsx-runtime";
+import { jsx } from "@opentui/solid/jsx-runtime";
 function probeGit(directory) {
   return new Promise((resolve) => {
     execFile(
@@ -33,10 +34,7 @@ function probeGit(directory) {
   });
 }
 var GIT_POLL_MS = 3e4;
-var CLOCK_TICK_MS = 6e4;
-function StyledSpan(props) {
-  return /* @__PURE__ */ jsx("span", { style: { fg: props.fg }, children: props.children });
-}
+var TICK_MS = 1e3;
 var WORK_MAX_CHARS = 48;
 function currentWork(messages) {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -54,9 +52,6 @@ function UnixPrompt(props) {
   const context = usePlugin();
   const directory = createMemo(() => context.location?.directory);
   const [git, setGit] = createSignal(void 0);
-  const [now, setNow] = createSignal(/* @__PURE__ */ new Date());
-  const clockTimer = setInterval(() => setNow(/* @__PURE__ */ new Date()), CLOCK_TICK_MS);
-  onCleanup(() => clearInterval(clockTimer));
   createEffect(() => {
     const dir = directory();
     if (!dir) {
@@ -70,10 +65,10 @@ function UnixPrompt(props) {
       });
     };
     refresh();
-    const timer = setInterval(refresh, GIT_POLL_MS);
+    const timer2 = setInterval(refresh, GIT_POLL_MS);
     onCleanup(() => {
       alive = false;
-      clearInterval(timer);
+      clearInterval(timer2);
     });
   });
   const path = createMemo(() => {
@@ -84,28 +79,38 @@ function UnixPrompt(props) {
   const work = createMemo(
     () => running() ? currentWork(context.data.session.message.list(props.sessionID) ?? []) : void 0
   );
-  return /* @__PURE__ */ jsxs("text", { children: [
-    /* @__PURE__ */ jsxs(StyledSpan, { fg: context.theme.text.faint, children: [
-      "\u250C [",
-      formatClock(now()),
-      "]"
-    ] }),
-    path() && /* @__PURE__ */ jsxs(StyledSpan, { fg: context.theme.text.base, children: [
-      " ",
-      path()
-    ] }),
-    git() && /* @__PURE__ */ jsxs(Fragment, { children: [
-      /* @__PURE__ */ jsx(StyledSpan, { fg: context.theme.text.faint, children: " \u2500\u2500 " }),
-      /* @__PURE__ */ jsxs(StyledSpan, { fg: context.theme.text.muted, children: [
-        git().branch,
-        git().dirty ? "\u271A" : ""
-      ] })
-    ] }),
-    work() && /* @__PURE__ */ jsxs(Fragment, { children: [
-      /* @__PURE__ */ jsx(StyledSpan, { fg: context.theme.text.faint, children: " \u22EF " }),
-      /* @__PURE__ */ jsx(StyledSpan, { fg: context.theme.text.muted, children: work() })
-    ] })
-  ] });
+  let textRef;
+  let lastLine = "";
+  const buildContent = () => {
+    const tokens = context.theme.text;
+    const chunks = [fg(tokens.faint)(`\u250C [${formatClock(/* @__PURE__ */ new Date())}]`)];
+    const p = path();
+    if (p) chunks.push(fg(tokens.base)(` ${p}`));
+    const g = git();
+    if (g) {
+      chunks.push(fg(tokens.faint)(" \u2500\u2500 "));
+      chunks.push(fg(tokens.muted)(`${g.branch}${g.dirty ? "\u271A" : ""}`));
+    }
+    const w = work();
+    if (w) {
+      chunks.push(fg(tokens.faint)(" \u22EF "));
+      chunks.push(fg(tokens.muted)(w));
+    }
+    return new StyledText(chunks);
+  };
+  const update = () => {
+    if (!textRef) return;
+    const line = buildContent().chunks.map((chunk) => chunk.text).join("");
+    if (line === lastLine) return;
+    lastLine = line;
+    textRef.content = buildContent();
+  };
+  const timer = setInterval(update, TICK_MS);
+  onCleanup(() => clearInterval(timer));
+  return /* @__PURE__ */ jsx("text", { ref: (el) => {
+    textRef = el;
+    update();
+  } });
 }
 var tui_default = Plugin.define({
   id: "jsherron.unix-prompt",

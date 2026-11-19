@@ -2,8 +2,8 @@ import { Plugin } from "@opencode/plugin/tui"
 import { usePlugin } from "@opencode/plugin/tui"
 import { createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { execFile } from "node:child_process"
-import type { RGBA } from "@opentui/core"
-import type { JSX } from "@opentui/solid"
+import { fg, StyledText } from "@opentui/core"
+import type { RGBA, TextChunk, TextRenderable } from "@opentui/core"
 import { formatClock } from "./clock"
 
 type GitState = {
@@ -33,14 +33,16 @@ function probeGit(directory: string): Promise<GitState | undefined> {
 // clock formatting lives in ./clock.ts (shared with the server part)
 
 const GIT_POLL_MS = 30_000
-const CLOCK_TICK_MS = 60_000
 
-/** Intrinsic <span> with a themed `fg` (RGBA token). The reconciler's
- * setProperty only honors `href` and `style` on text nodes — bare `fg` props
- * are silently dropped — so pass the color through `style`. */
-function StyledSpan(props: { fg?: RGBA; children?: JSX.Element }) {
-  return <span style={{ fg: props.fg }}>{props.children}</span>
-}
+/** Why the prompt line updates imperatively (investigated 2026-11-19, see
+ * AGENTS.md "Known limitation" section): under esbuild `--jsx=automatic` the
+ * @opentui/solid jsx-runtime receives dynamic JSX children as strings that
+ * were already evaluated at mount, so signal-driven JSX text never changes
+ * after the first paint. The reliable update path is the renderable's own
+ * `content` setter (nativeScene.setText + lifecycle refresh + requestRender),
+ * which paints on the renderer's on-demand loop. Verified live: a per-tick
+ * `content` update ticks the line every second during true idle. */
+const TICK_MS = 1_000
 
 /** Summary of the current work shown while the model is running: the first
  * displayable line of the latest user prompt. Blank lines and the admission
@@ -70,11 +72,6 @@ function UnixPrompt(props: { sessionID: string }) {
   const directory = createMemo(() => context.location?.directory)
 
   const [git, setGit] = createSignal<GitState | undefined>(undefined)
-  const [now, setNow] = createSignal(new Date())
-
-  // Clock: minute precision, lightweight tick.
-  const clockTimer = setInterval(() => setNow(new Date()), CLOCK_TICK_MS)
-  onCleanup(() => clearInterval(clockTimer))
 
   // Git: re-probe on directory change, then every 30s.
   createEffect(() => {
@@ -103,39 +100,54 @@ function UnixPrompt(props: { sessionID: string }) {
   })
 
   // Current-work summary: shown only while the model is running, from the
-  // latest user prompt. `data.session.status`/`message.list` are reactive
-  // reads over the host's event-driven client store — no polling needed.
+  // latest user prompt. `data.session.status`/`message.list` are reads over
+  // the host's event-driven client store, evaluated inside the per-tick
+  // content rebuild below (JSX reads would be frozen — see the note above).
   const running = createMemo(() => context.data.session.status(props.sessionID) === "running")
   const work = createMemo(() =>
     running() ? currentWork(context.data.session.message.list(props.sessionID) ?? []) : undefined,
   )
 
-  // Per-segment colors via <span> children (theme tokens only):
-  // time faint, cwd base, separator faint, branch muted, dirty marker muted.
-  // NOTE: <text content={StyledText}> is NOT supported by the @opentui/solid
-  // reconciler — it stringifies non-string content props to "[object Object]".
-  // Colors must go through `style` on <span> children — bare `fg` props are
-  // silently dropped (setProperty only honors href/style on text nodes).
-  // The git signal must be read inside the JSX (Solid tracks only JSX
-  // expressions; component-body reads never re-run).
-  return (
-    <text>
-      <StyledSpan fg={context.theme.text.faint}>┌ [{formatClock(now())}]</StyledSpan>
-      {path() && <StyledSpan fg={context.theme.text.base}> {path()}</StyledSpan>}
-      {git() && (
-        <>
-          <StyledSpan fg={context.theme.text.faint}> ── </StyledSpan>
-          <StyledSpan fg={context.theme.text.muted}>{git()!.branch}{git()!.dirty ? "✚" : ""}</StyledSpan>
-        </>
-      )}
-      {work() && (
-        <>
-          <StyledSpan fg={context.theme.text.faint}> ⋯ </StyledSpan>
-          <StyledSpan fg={context.theme.text.muted}>{work()}</StyledSpan>
-        </>
-      )}
-    </text>
-  )
+  let textRef: TextRenderable | undefined
+  let lastLine = ""
+
+  /** One chunk per colored segment; layout mirrors the original JSX spans:
+   * time faint, cwd base, separator faint, branch muted, dirty marker muted,
+   * work summary muted. */
+  const buildContent = (): StyledText => {
+    const tokens = context.theme.text
+    const chunks: TextChunk[] = [fg(tokens.faint)(`┌ [${formatClock(new Date())}]`)]
+    const p = path()
+    if (p) chunks.push(fg(tokens.base)(` ${p}`))
+    const g = git()
+    if (g) {
+      chunks.push(fg(tokens.faint)(" ── "))
+      chunks.push(fg(tokens.muted)(`${g.branch}${g.dirty ? "✚" : ""}`))
+    }
+    const w = work()
+    if (w) {
+      chunks.push(fg(tokens.faint)(" ⋯ "))
+      chunks.push(fg(tokens.muted)(w))
+    }
+    return new StyledText(chunks)
+  }
+
+  const update = () => {
+    if (!textRef) return
+    const line = buildContent()
+      .chunks.map((chunk) => chunk.text)
+      .join("")
+    if (line === lastLine) return
+    lastLine = line
+    textRef.content = buildContent()
+  }
+
+  // Per-tick rebuild with a change guard: a frame is only requested when the
+  // line's text actually changed (minute roll, git poll, work transitions).
+  const timer = setInterval(update, TICK_MS)
+  onCleanup(() => clearInterval(timer))
+
+  return <text ref={(el: TextRenderable | undefined) => { textRef = el; update() }} />
 }
 
 export default Plugin.define({
