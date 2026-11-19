@@ -1,79 +1,72 @@
-# PENDING REVIEW — file the opentui/opencode frame-admission bug upstream
+# PENDING REVIEW — no confident bug to file; decide how to proceed
 
-**Decision needed from Jason (2026-11-18):** approve filing the issue below
-against `sst/opencode` (or `sst/opentui` directly — see "where to file").
-Filing an issue on an external repo is an external-system write, so it waits
-here for per-action approval.
+**Status as of 2026-11-19: the original "file this bug" plan is retracted.**
+Two rounds of investigation produced two different wrong-ish conclusions
+before landing on what's actually confirmed. Full history below so the
+retraction is traceable, not just asserted.
 
-## Where to file
+## What happened (for context, not action)
 
-`sst/opencode` pins `@opentui/core`, so the user-visible regression is an
-opencode issue, but the root cause lives in `opentui`. Recommend filing on
-`sst/opencode` with the `opentui` label (opencode issues reference that label
-for this exact class of bug — see issue #3650), since that's where a user
-would look; the maintainers can transfer/cross-link to `sst/opentui` if they
-want the native fix tracked separately.
+1. **First pass:** diagnosed "opencode 2.3.2 idle render gate," concluded
+   plugin-side repaint APIs were dead ends, planned to file an issue blaming
+   opentui's native output-admission layer.
+2. **Challenged ("sounds like you didn't actually prove it out"):** rebuilt
+   the investigation with a proper source-level bisection between opentui
+   0.8.0 (opencode 2.2.5) and 0.8.4 (opencode 2.3.2), concluding the 0.8.4
+   output-admission layer was the cause, with a specific suspected Zig
+   function.
+3. **Challenged again ("are we sure this is a bug?") and asked to keep
+   confirming:** built isolated minimal opentui test harnesses (bare
+   `@opentui/core`, no opencode) and discovered the raw-byte-regex matching
+   used throughout was itself broken — it cannot see diff-only terminal
+   redraws (a changed digit plus a cursor-position escape, not a re-emitted
+   full string). Re-tested with a real terminal emulator (`pyte`) decoding
+   actual screen content instead of raw bytes.
+4. With the corrected methodology: bare opentui (both 0.8.0 and 0.8.4) ticks
+   correctly during true idle. The real plugin, inside real opencode, does
+   not — confirmed with correct methodology, so the underlying complaint is
+   real. But testing opencode **2.2.5 directly** (downloaded the actual
+   release binary into an isolated scratch directory, same plugin, same
+   corrected methodology) showed **byte-identical frozen behavior** to
+   2.3.2. The "regression" claim is therefore false — this is not new
+   between versions.
 
-## Issue text (ready to paste)
+## What is actually confirmed (full detail in `AGENTS.md`)
 
----
+- Opencode's TUI performs zero self-driven repaints during true idle, for
+  anything on screen (not just the plugin's line) — confirmed via full
+  terminal-screen diffing, both opencode versions tested.
+- It repaints instantly and correctly on any external activity.
+- The plugin/Solid component itself is fully healthy throughout.
+- Bare opentui supports continuous idle-time updates; opencode's TUI host
+  does not pass that through for plugin-slot content, even using the
+  renderer's own `requestLive()`/`setFrameCallback()` primitives.
+- The mechanism inside opencode's own TUI host that suppresses this is
+  **not identified**. Tracing it would require instrumenting
+  `sst/opencode`'s TUI package directly, which has not been done.
 
-**Title:** TUI: output freezes while idle since opentui 0.8.4 (opencode 2.3.x) — renderer runs at full FPS but zero bytes reach the terminal until the next user action
+## Decision needed from Jason
 
-**Environment**
-- opencode 2.3.2 (binary dated 2026-11-17), macOS arm64
-- Regression window: `@opentui/core` 0.8.0 (opencode 2.2.5, working) -> 0.8.4 (opencode 2.3.2, broken)
-- Reproduced with a small local TUI plugin contributing to the `session.composer.top` slot; same plugin code worked correctly on 2.2.5
+Given there's no confirmed root cause and no confirmed regression, filing an
+issue now would mean describing a real symptom without a credible
+explanation — better than the two previous wrong theories, but still weaker
+than ideal. Options, roughly in order of effort:
 
-**Symptom**
+1. **Do nothing further.** Document the limitation in the plugin's README
+   (clock shows time as of last activity, not real time) and move on.
+2. **Ask opencode maintainers a question, not file a bug.** Post something
+   like: "Does `context.renderer.requestLive()`/`setFrameCallback()` work
+   from a plugin-contributed slot? We can't get idle-time self-repaints to
+   work for plugin content even using these APIs, though bare opentui
+   supports it fine." This is honest about what's unconfirmed and invites
+   the people who actually know the architecture to say whether it's a bug,
+   a missing feature, or working as intended.
+3. **Keep investigating** by cloning `sst/opencode` and instrumenting its
+   own TUI package (`packages/tui/src/plugin/` and the renderer-scheduling
+   code it drives) to find the actual suppression mechanism, before saying
+   anything to the maintainers.
 
-Any slot/component whose content updates only via a JS timer (not a keypress or server event) stops repainting once the TUI goes idle. In a fresh session it never paints at all. The moment the user does anything (submits a prompt, server pushes a streaming event), the pending content flushes instantly and correctly.
-
-**What's healthy (ruled out)**
-
-Verified via temporary diagnostics in the affected plugin, with a scripted pty (120x40, zero input) and direct probes of opentui's public API:
-
-1. The plugin/Solid component tree is completely healthy: the slot's `render` callback fires once at boot, the component mounts and **never unmounts**, its rendered `<text>` node stays attached to a stable parent, `visible=true`, `isDestroyed=false`, for the entire idle window (170s+ tested).
-2. The content genuinely updates in the renderable tree: a walk of `renderer.root` during a live (non-idle-repro) session showed the text node's string children changing value over real time (e.g. `22:08` -> `22:26` across several minutes), confirming the signal -> renderable pipeline works.
-3. The render loop runs continuously at full target FPS with **no backlog**: `nativeSession.lib.sessionGetRendererState()` reports `framePending=false`, `droppedFrames=0`, `droppedFrameBytes=0` the whole time, while `frameCount` increments at ~55-60/s (matching `targetFps=30`/`maxFps=60`).
-4. `OTUI_STDOUT_THREAD=false` has **zero effect** on the symptom, ruling out the native stdout writer thread specifically.
-5. None of `renderer.requestRender()`, `renderer.requestLive()` + `dropLive()`, or forcibly keeping the renderer's control state at `auto_started` produce any additional terminal output while idle — all three run (confirmed via instrumented wrappers) without effect.
-
-**What's broken**
-
-Despite all of the above, the pty capture of the TUI's actual output is **byte-for-byte identical** across the entire idle window (tested up to ~210s). No frame reaches the terminal. On any subsequent user action it flushes immediately and correctly.
-
-**Suspected root cause**
-
-`@opentui/core` 0.8.0 -> 0.8.4 added an output-admission ("frame admission") layer around backpressure handling (new `packages/core/src/tests/renderer.frame-admission.test.ts`, +201 lines, plus substantial changes to `NativeSession.ts`/`renderer.ts`: `CAPTURED_STDOUT_HIGH_WATER_BYTES`, `drainPending`, `takeDrain`, the `stdoutPost`/`stdoutWriter` state machine). The test's own description matches our symptom almost exactly:
-
-> "frame admission bounds delayed output to one frame and coalesces callback work" ... render requests coalesce and do not produce new output until `driver.idle()` resolves.
-
-At the Zig layer, `FeedBackend.prepareFrame()` (`packages/native/src/renderer-output.zig`) returns `.skipped` under conditions including `self.feed.hasPendingBytes()` and `self.shouldSkipFrame()` (span-queue high-water mark / "no atomic capacity"). `CliRenderer.presentNativeScene()` (`packages/core/src/renderer.ts`) handles a `Skipped` status by calling `scheduleRenderAfterOutputIdle()`, which waits on `nativeSession.idle()` before retrying. If something about this admission path only considers the stream "idle" (eligible to drain/retry) when driven by an external I/O event — and never on a pure internal timer tick with no outstanding writes — a timer-only update could get stuck indefinitely behind this gate even with nothing actually queued.
-
-This gate is present unchanged on opentui's current `main` (0.9.3 as of 2026-11-18), so the regression is still live.
-
-**Repro**
-
-Minimal TUI plugin (loaded via the `plugins` config entry):
-
-```tsx
-// tui part — ctx.ui.slot({ append: "session.composer.top", render: ... })
-function Clock() {
-  const [now, setNow] = createSignal(new Date())
-  setInterval(() => setNow(new Date()), 60_000)
-  return <text>{"clock: " + now().toISOString()}</text>
-}
-```
-
-1. Start opencode in a terminal, send no input.
-2. Observe: the clock line either never appears (fresh session) or freezes at its last value (already-running session).
-3. Type/submit anything: the clock line instantly jumps to the current time and keeps up from then on, until the TUI goes idle again.
-
-**Expected:** the clock line updates every 60s regardless of user activity, matching its behavior on opencode 2.2.5 / opentui 0.8.0.
-
----
-
-## What unblocks this
-
-Jason approves filing (or edits the text first). Alternative: skip filing and just wait for an opentui/opencode fix, re-verifying per the AGENTS.md "re-verify" note whenever the local opencode binary updates.
+No external write happens without Jason picking one of these (or something
+else) and giving explicit approval for the exact content, per the standing
+Jira/external-write-approval pattern extended here to any outward-facing
+report.
