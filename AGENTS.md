@@ -14,6 +14,20 @@ OpenCode V2 TUI plugin. Renders a UNIX-style prompt line (`┌ [date time] ~/pat
 - Scope discipline: model/context/cost are already shown by the TUI — do not duplicate them here.
 - The prompt stamp edits the canonical persisted user input (transcript keeps it); a matching `stripStamps` on the `context`/`compaction`/`generate`/`title` hooks removes the stamp line from outgoing model requests (zero token cost — request edits never write history). Guard against double-stamping by checking for the `┌ [` prefix (retry-safety + commands that submit through `session.prompt`). If the stamp format changes, keep `STAMP_RE` in sync — it must match `formatClock` output exactly.
 
+## Known issue: OpenCode 2.3.2 idle render gate (diagnosed 2026-11-18)
+
+The live composer-top clock only repaints when the host is active (prompt submission, model streaming). Between activities it is frozen — and in a fresh idle session it never paints at all. **Not a plugin bug**: verified against opencode 2.3.2 (binary updated 2026-11-17; the plugin was built and visually verified on 2.2.5).
+
+Evidence from instrumented runs (pty at 120x40, zero input, `clock_repro.py`-style harness; diagnostic code reverted):
+
+- Plugin side is healthy: setup runs, slot renders, component mounts and completes, theme tokens valid, the 60s clock interval and 30s git poll both fire.
+- Renderer probes: `getSchedulerState()` shows `controlState=idle, _isRunning=false` at idle. `requestLive()` flips it to `auto_started` and the render loop then runs continuously (~8,500 `loop()` executions in 80s), the native session scheduler executes its callbacks (~26k in 80s, all via the default setImmediate scheduler — opencode passes no custom scheduler; confirmed in the embedded bundle), and yet **zero repaint bytes reach the terminal while idle**. The terminal output is byte-identical across idle runs.
+- On prompt submission everything paints instantly (clock line at its then-current time, message admission stamp, streamed response).
+- Plugin-side repaint APIs are dead ends, each verified to run without producing a frame: `renderer.requestRender()`, `requestLive()`+`dropLive()` (1.5s hold), and a permanently-running loop. The gate is deeper than the loop — likely in the host's frame/output flush path ("later-turn" scheduling in @opentui core's NativeSession, or a pending seed/palette frame).
+- The per-message admission stamp (`┌ [...]` above each submitted prompt in the transcript) is static **by design** and must not be confused with the clock freeze: each stamp records its prompt's submission time.
+
+Re-verify against newer opencode versions before attempting further fixes; check `opencode --version` and whether idle repaint works again (any idle pty capture showing a changing `┌ [...]` within 2 minutes). If a host fix lands, the plugin needs no change. Do not re-add nudges — they are proven no-ops.
+
 ## Conventions
 
 - `pnpm build && pnpm typecheck` must be green before any commit.
